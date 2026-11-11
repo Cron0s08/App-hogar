@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-slate-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HogarSync - Control del Hogar</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- React & Babel -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="h-full text-slate-800 antialiased selection:bg-brand-500 selection:text-white">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useCallback } = React;
+
+        // --- UTILIDADES DE FECHA LOCAL ---
+        const getTodayStr = () => {
+            const d = new Date();
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        };
+
+        const formatLocalDate = (dateObj) => {
+            const y = dateObj.getFullYear();
+            const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const day = String(dateObj.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        };
+
+        const parseLocalDate = (dateStr) => {
+            if (!dateStr) return new Date();
+            const [y, m, d] = dateStr.split('-').map(Number);
+            return new Date(y, m - 1, d);
+        };
+
+        // Transformación hexadecimal segura para admitir símbolos como &, espacios o acentos
+        const getSafeKey = (codeStr) => {
+            const clean = codeStr.trim().toLowerCase();
+            let hex = '';
+            for (let i = 0; i < clean.length; i++) {
+                hex += clean.charCodeAt(i).toString(16);
+            }
+            return hex || 'default_family';
+        };
+
+        // --- CONSTANTES DE LA APLICACIÓN ---
+        const ROOMS = [
+            'Patio',
+            'Salón',
+            'Cocina',
+            'Baño planta 1',
+            'Habitación nenes',
+            'Habitación matrimonio',
+            'Baño planta 2',
+            'Solárium',
+            'Trastero',
+            'Despacho',
+            'Sala de juegos'
+        ];
+
+        const ANNUAL_CATEGORIES = [
+            'Impuestos y Tasas',
+            'Seguros',
+            'Vehículos e ITV',
+            'Servicios y Suministros',
+            'Documentación',
+            'Otro'
+        ];
+
+        const MONTHS_LIST = [
+            'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+            'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+        ];
+
+        const DAYS_OF_WEEK = [
+            { id: 'lun', name: 'Lunes', short: 'Lun', dayNum: 1 },
+            { id: 'mar', name: 'Martes', short: 'Mar', dayNum: 2 },
+            { id: 'mie', name: 'Miércoles', short: 'Mié', dayNum: 3 },
+            { id: 'jue', name: 'Jueves', short: 'Jue', dayNum: 4 },
+            { id: 'vie', name: 'Viernes', short: 'Vier', dayNum: 5 },
+            { id: 'sab', name: 'Sábado', short: 'Sáb', dayNum: 6 },
+            { id: 'dom', name: 'Domingo', short: 'Dom', dayNum: 0 },
+        ];
+
+        const INITIAL_ANNUAL = [
+            {
+                id: 'a1',
+                title: 'Declaración de la Renta (IRPF)',
+                category: 'Impuestos y Tasas',
+                month: 'Mayo',
+                dueDate: '2026-06-30',
+                cost: 0,
+                status: 'Pendiente',
+                notes: 'Revisar borrador en la web de la Agencia Tributaria.',
+                createdAt: getTodayStr()
+            },
+            {
+                id: 'a2',
+                title: 'Impuesto sobre Bienes Inmuebles (IBI)',
+                category: 'Impuestos y Tasas',
+                month: 'Octubre',
+                dueDate: '2026-10-20',
+                cost: 380,
+                status: 'Pendiente',
+                notes: 'Cobro domiciliado en la cuenta habitual.',
+                createdAt: getTodayStr()
+            },
+            {
+                id: 'a3',
+                title: 'Impuesto de Circulación (IVTM)',
+                category: 'Vehículos e ITV',
+                month: 'Mayo',
+                dueDate: '2026-05-15',
+                cost: 85,
+                status: 'Pendiente',
+                notes: 'Impuesto municipal del vehículo.',
+                createdAt: getTodayStr()
+            },
+            {
+                id: 'a4',
+                title: 'Seguro del Hogar (Renovación)',
+                category: 'Seguros',
+                month: 'Noviembre',
+                dueDate: '2026-11-15',
+                cost: 260,
+                status: 'Pendiente',
+                notes: 'Revisar coberturas un mes antes.',
+                createdAt: getTodayStr()
+            }
+        ];
+
+        const INITIAL_ROUTINES = [
+            { id: 'r1', title: 'Barrer y fregar el suelo', room: 'Salón', period: 'Mañana', days: ['lun', 'mie', 'vie'] },
+            { id: 'r2', title: 'Limpieza profunda de encimera y vitro', room: 'Cocina', period: 'Noche', days: ['lun', 'mar', 'mie', 'jue', 'vie', 'sab', 'dom'] },
+            { id: 'r3', title: 'Regar plantas y repasar muebles exteriores', room: 'Patio', period: 'Tarde', days: ['mar', 'jue', 'sab'] },
+            { id: 'r4', title: 'Limpiar mamparas y sanitarios', room: 'Baño planta 1', period: 'Mañana', days: ['lun', 'jue'] },
+            { id: 'r5', title: 'Recoger juguetes y airear estancia', room: 'Habitación nenes', period: 'Tarde', days: ['lun', 'mar', 'mie', 'jue', 'vie'] },
+            { id: 'r6', title: 'Limpieza y ventilación de terraza', room: 'Solárium', period: 'Mañana', days: ['sab'] },
+            { id: 'r7', title: 'Pasar aspirador y desempolvar mesa', room: 'Despacho', period: 'Tarde', days: ['mie'] }
+        ];
+
+        const INITIAL_BACKLOG = [
+            {
+                id: 'b1',
+                title: 'Limpiar filtros de aire acondicionado',
+                room: 'Solárium',
+                priority: 'Alta',
+                status: 'Pendiente',
+                description: 'Desmontar los filtros frontales y lavar con agua templada.',
+                createdAt: getTodayStr()
+            },
+            {
+                id: 'b2',
+                title: 'Ajustar bisagra del mueble bajo fregadero',
+                room: 'Cocina',
+                priority: 'Media',
+                status: 'Pendiente',
+                description: 'Apretar los tornillos de retención de la puerta.',
+                createdAt: getTodayStr()
+            }
+        ];
+
+        // --- COMPONENTE PRINCIPAL ---
+        function App() {
+            const [activeTab, setActiveTab] = useState('routines');
+            const [selectedDate, setSelectedDate] = useState(getTodayStr());
+
+            // Estado de Sincronización
+            const [familyCode, setFamilyCode] = useState(() => localStorage.getItem('hogar_family_code') || '');
+            const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+            const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
+            const [syncStatus, setSyncStatus] = useState('idle');
+            const [toastMessage, setToastMessage] = useState(null);
+
+            // Modales
+            const [isRoutineModalOpen, setIsRoutineModalOpen] = useState(false);
+            const [editingRoutine, setEditingRoutine] = useState(null);
+            const [isManageRoutinesOpen, setIsManageRoutinesOpen] = useState(false);
+
+            const [isBacklogModalOpen, setIsBacklogModalOpen] = useState(false);
+            const [editingBacklog, setEditingBacklog] = useState(null);
+
+            const [isAnnualModalOpen, setIsAnnualModalOpen] = useState(false);
+            const [editingAnnual, setEditingAnnual] = useState(null);
+
+            const [deleteConfirm, setDeleteConfirm] = useState(null);
+
+            // Datos Principales
+            const [routines, setRoutines] = useState(() => {
+                const saved = localStorage.getItem('hogar_routines');
+                return saved ? JSON.parse(saved) : INITIAL_ROUTINES;
+            });
+
+            const [completedLogs, setCompletedLogs] = useState(() => {
+                const saved = localStorage.getItem('hogar_completed_logs');
+                return saved ? JSON.parse(saved) : {};
+            });
+
+            const [backlogItems, setBacklogItems] = useState(() => {
+                const saved = localStorage.getItem('hogar_backlog');
+                return saved ? JSON.parse(saved) : INITIAL_BACKLOG;
+            });
+
+            const [annualItems, setAnnualItems] = useState(() => {
+                const saved = localStorage.getItem('hogar_annual');
+                return saved ? JSON.parse(saved) : INITIAL_ANNUAL;
+            });
+
+            const showToast = (msg) => {
+                setToastMessage(msg);
+                setTimeout(() => setToastMessage(null), 3000);
+            };
+
+            // MOTOR DE SINCRONIZACIÓN NUBE REST CON SOPORTE COMPLETO PARA SIMBOLOS (&) Y RETRY
+            const pushDataToCloud = useCallback(async (customPayload = null) => {
+                if (!familyCode.trim()) return;
+                setSyncStatus('syncing');
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+                try {
+                    const hexKey = getSafeKey(familyCode);
+                    const payload = customPayload || {
+                        routines,
+                        completedLogs,
+                        backlogItems,
+                        annualItems,
+                        lastUpdated: Date.now()
+                    };
+                    const url = `https://kvdb.io/HogarSync2026Store/${hexKey}`;
+                    const res = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                        signal: controller.signal
+                    });
+                    clearTimeout(timeoutId);
+                    if (res.ok) {
+                        setSyncStatus('connected');
+                    } else {
+                        setSyncStatus('error');
+                    }
+                } catch (err) {
+                    clearTimeout(timeoutId);
+                    console.error("Error en envío:", err);
+                    setSyncStatus('error');
+                }
+            }, [familyCode, routines, completedLogs, backlogItems, annualItems]);
+
+            const pullDataFromCloud = useCallback(async () => {
+                if (!familyCode.trim()) return;
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+                try {
+                    const hexKey = getSafeKey(familyCode);
+                    const url = `https://kvdb.io/HogarSync2026Store/${hexKey}`;
+                    const res = await fetch(url, { signal: controller.signal });
+                    clearTimeout(timeoutId);
+                    if (res.ok) {
+                        const text = await res.text();
+                        if (text && text.trim().startsWith('{')) {
+                            const data = JSON.parse(text);
+                            if (data && typeof data === 'object') {
+                                if (data.routines) setRoutines(data.routines);
+                                if (data.completedLogs) setCompletedLogs(data.completedLogs);
+                                if (data.backlogItems) setBacklogItems(data.backlogItems);
+                                if (data.annualItems) setAnnualItems(data.annualItems);
+                                setSyncStatus('connected');
+                            }
+                        }
+                    } else if (res.status === 404) {
+                        pushDataToCloud();
+                    } else {
+                        setSyncStatus('error');
+                    }
+                } catch (err) {
+                    clearTimeout(timeoutId);
+                    console.error("Error en recepción:", err);
+                    setSyncStatus('error');
+                }
+            }, [familyCode, pushDataToCloud]);
+
+            // Persistencia local
+            useEffect(() => { localStorage.setItem('hogar_routines', JSON.stringify(routines)); }, [routines]);
+            useEffect(() => { localStorage.setItem('hogar_completed_logs', JSON.stringify(completedLogs)); }, [completedLogs]);
+            useEffect(() => { localStorage.setItem('hogar_backlog', JSON.stringify(backlogItems)); }, [backlogItems]);
+            useEffect(() => { localStorage.setItem('hogar_annual', JSON.stringify(annualItems)); }, [annualItems]);
+
+            // Polling en segundo plano
+            useEffect(() => {
+                if (!familyCode.trim()) {
+                    setSyncStatus('idle');
+                    return;
+                }
+                pullDataFromCloud();
+                const interval = setInterval(() => {
+                    pullDataFromCloud();
+                }, 4000);
+                return () => clearInterval(interval);
+            }, [familyCode, pullDataFromCloud]);
+
+            const handleSaveFamilyCode = (code) => {
+                const clean = code.trim();
+                setFamilyCode(clean);
+                localStorage.setItem('hogar_family_code', clean);
+                if (clean) {
+                    showToast(`Conectando con código: ${clean}`);
+                    setTimeout(() => pullDataFromCloud(), 300);
+                } else {
+                    setSyncStatus('idle');
+                }
+            };
+
+            const exportBackup = () => {
+                const data = { routines, completedLogs, backlogItems, annualItems, exportDate: new Date().toISOString() };
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `HogarSync_Copia_${getTodayStr()}.json`;
+                a.click();
+                showToast("Copia descargada.");
+            };
+
+            const importBackup = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const imported = JSON.parse(event.target.result);
+                        if (imported.routines) setRoutines(imported.routines);
+                        if (imported.completedLogs) setCompletedLogs(imported.completedLogs);
+                        if (imported.backlogItems) setBacklogItems(imported.backlogItems);
+                        if (imported.annualItems) setAnnualItems(imported.annualItems);
+                        showToast("¡Copia de seguridad restaurada!");
+                        setIsBackupModalOpen(false);
+                        if (familyCode.trim()) {
+                            pushDataToCloud(imported);
+                        }
+                    } catch (err) {
+                        showToast("Error: Archivo JSON no válido.");
+                    }
+                };
+                reader.readAsText(file);
+            };
+
+            // Filtros Mantenimiento
+            const [filterRoom, setFilterRoom] = useState('Todas');
+            const [filterPriority, setFilterPriority] = useState('Todas');
+            const [filterStatus, setFilterStatus] = useState('Todas');
+
+            // Filtros Trámites
+            const [annualCategory, setAnnualCategory] = useState('Todas');
+            const [annualMonth, setAnnualMonth] = useState('Todos');
+            const [annualStatus, setAnnualStatus] = useState('Todas');
+
+            // Fechas
+            const currentDateObj = useMemo(() => parseLocalDate(selectedDate), [selectedDate]);
+            const currentDayOfWeekNum = currentDateObj.getDay();
+
+            const currentDayMeta = useMemo(() => {
+                return DAYS_OF_WEEK.find(d => d.dayNum === currentDayOfWeekNum) || DAYS_OF_WEEK[0];
+            }, [currentDayOfWeekNum]);
+
+            const weekDaysList = useMemo(() => {
+                const curr = parseLocalDate(selectedDate);
+                const day = curr.getDay();
+                const diffToMon = curr.getDate() - day + (day === 0 ? -6 : 1);
+                const monday = new Date(curr.setDate(diffToMon));
+
+                return DAYS_OF_WEEK.map((d, index) => {
+                    const tempDate = new Date(monday);
+                    tempDate.setDate(monday.getDate() + index);
+                    const dateStr = formatLocalDate(tempDate);
+                    return {
+                        ...d,
+                        dateStr,
+                        dayNumber: tempDate.getDate(),
+                        isToday: dateStr === getTodayStr(),
+                        isSelected: dateStr === selectedDate
+                    };
+                });
+            }, [selectedDate]);
+
+            const changeDateByDays = (delta) => {
+                const date = parseLocalDate(selectedDate);
+                date.setDate(date.getDate() + delta);
+                setSelectedDate(formatLocalDate(date));
+            };
+
+            const dailyRoutines = useMemo(() => {
+                return routines.filter(r => r.days && r.days.includes(currentDayMeta.id));
+            }, [routines, currentDayMeta]);
+
+            const toggleRoutineCompletion = (routineId) => {
+                const dayLog = completedLogs[selectedDate] || [];
+                const isCompleted = dayLog.includes(routineId);
+                const newDayLog = isCompleted 
+                    ? dayLog.filter(id => id !== routineId)
+                    : [...dayLog, routineId];
+                
+                const newLogs = { ...completedLogs, [selectedDate]: newDayLog };
+                setCompletedLogs(newLogs);
+                if (familyCode.trim()) {
+                    pushDataToCloud({ routines, completedLogs: newLogs, backlogItems, annualItems });
+                }
+            };
+
+            const confirmDelete = () => {
+                if (!deleteConfirm) return;
+                const { type, id } = deleteConfirm;
+                if (type === 'routine') {
+                    setRoutines(prev => prev.filter(r => r.id !== id));
+                } else if (type === 'backlog') {
+                    setBacklogItems(prev => prev.filter(b => b.id !== id));
+                } else if (type === 'annual') {
+                    setAnnualItems(prev => prev.filter(a => a.id !== id));
+                }
+                showToast("Elemento eliminado");
+                setDeleteConfirm(null);
+                setTimeout(() => pushDataToCloud(), 100);
+            };
+
+            const filteredBacklog = useMemo(() => {
+                return backlogItems.filter(item => {
+                    if (filterRoom !== 'Todas' && item.room !== filterRoom) return false;
+                    if (filterPriority
