@@ -1,0 +1,1560 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-slate-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HogarSync - Control del Hogar</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- React 18 & Babel standalone -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="h-full text-slate-800 antialiased selection:bg-brand-500 selection:text-white">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useCallback } = React;
+
+        // --- UTILIDADES DE FECHA LOCAL ---
+        const getTodayStr = () => {
+            const d = new Date();
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        };
+
+        const formatLocalDate = (dateObj) => {
+            const y = dateObj.getFullYear();
+            const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const day = String(dateObj.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        };
+
+        const parseLocalDate = (dateStr) => {
+            if (!dateStr) return new Date();
+            const [y, m, d] = dateStr.split('-').map(Number);
+            return new Date(y, m - 1, d);
+        };
+
+        // --- CONSTANTES DE LAS 11 ESTANCIAS Y CATEGORÍAS ---
+        const ROOMS = [
+            'Patio',
+            'Salón',
+            'Cocina',
+            'Baño planta 1',
+            'Habitación nenes',
+            'Habitación matrimonio',
+            'Baño planta 2',
+            'Solárium',
+            'Trastero',
+            'Despacho',
+            'Sala de juegos'
+        ];
+
+        const ANNUAL_CATEGORIES = [
+            'Impuestos y Tasas',
+            'Seguros',
+            'Vehículos e ITV',
+            'Servicios y Suministros',
+            'Documentación',
+            'Otro'
+        ];
+
+        const MONTHS_LIST = [
+            'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+            'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+        ];
+
+        const DAYS_OF_WEEK = [
+            { id: 'lun', name: 'Lunes', short: 'Lun', dayNum: 1 },
+            { id: 'mar', name: 'Martes', short: 'Mar', dayNum: 2 },
+            { id: 'mie', name: 'Miércoles', short: 'Mié', dayNum: 3 },
+            { id: 'jue', name: 'Jueves', short: 'Jue', dayNum: 4 },
+            { id: 'vie', name: 'Viernes', short: 'Vie', dayNum: 5 },
+            { id: 'sab', name: 'Sábado', short: 'Sáb', dayNum: 6 },
+            { id: 'dom', name: 'Domingo', short: 'Dom', dayNum: 0 },
+        ];
+
+        // DATOS INICIALES POR DEFECTO
+        const INITIAL_ANNUAL = [
+            {
+                id: 'a1',
+                title: 'Declaración de la Renta (IRPF)',
+                category: 'Impuestos y Tasas',
+                month: 'Mayo',
+                cost: 0,
+                status: 'Pendiente',
+                notes: 'Revisar borrador en la web de la Agencia Tributaria.',
+                createdAt: getTodayStr()
+            },
+            {
+                id: 'a2',
+                title: 'Impuesto sobre Bienes Inmuebles (IBI)',
+                category: 'Impuestos y Tasas',
+                month: 'Octubre',
+                cost: 380,
+                status: 'Pendiente',
+                notes: 'Cobro domiciliado en la cuenta habitual.',
+                createdAt: getTodayStr()
+            },
+            {
+                id: 'a3',
+                title: 'Inspección Técnica de Vehículos (ITV)',
+                category: 'Vehículos e ITV',
+                month: 'Julio',
+                cost: 48,
+                status: 'Pendiente',
+                notes: 'Pedir cita previa online.',
+                createdAt: getTodayStr()
+            }
+        ];
+
+        const INITIAL_ROUTINES = [
+            { id: 'r1', title: 'Barrer y fregar el suelo', room: 'Salón', period: 'Mañana', days: ['lun', 'mie', 'vie'] },
+            { id: 'r2', title: 'Limpieza de encimera y vitro', room: 'Cocina', period: 'Noche', days: ['lun', 'mar', 'mie', 'jue', 'vie', 'sab', 'dom'] },
+            { id: 'r3', title: 'Regar plantas del patio', room: 'Patio', period: 'Tarde', days: ['mar', 'jue', 'sab'] },
+            { id: 'r4', title: 'Limpiar mampara y sanitarios', room: 'Baño planta 1', period: 'Mañana', days: ['lun', 'jue'] },
+            { id: 'r5', title: 'Ventilar y repasar muebles', room: 'Solárium', period: 'Mañana', days: ['sab'] }
+        ];
+
+        const INITIAL_BACKLOG = [
+            {
+                id: 'b1',
+                title: 'Limpiar filtros del aire acondicionado',
+                room: 'Solárium',
+                priority: 'Alta',
+                status: 'Pendiente',
+                description: 'Desmontar los filtros frontales y lavar con agua templada.',
+                createdAt: getTodayStr()
+            },
+            {
+                id: 'b2',
+                title: 'Ajustar bisagra suelta del mueble bajo fregadero',
+                room: 'Cocina',
+                priority: 'Media',
+                status: 'Pendiente',
+                description: 'Apretar los tornillos de fijación con destornillador.',
+                createdAt: getTodayStr()
+            }
+        ];
+
+        // SERVICE ENDPOINT CON BUCKET PUBLICO COMPATIBLE CON CORS (kvdb.io)
+        const BUCKET_ID = '4yK9mQ7zP1vX2nL8rE5t';
+        const getCloudEndpoint = (code) => {
+            const cleanCode = code.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+            return `https://kvdb.io/${BUCKET_ID}/hogar_${cleanCode}`;
+        };
+
+        function App() {
+            // Navegación
+            const [activeTab, setActiveTab] = useState('routines');
+            const [selectedDate, setSelectedDate] = useState(getTodayStr());
+
+            // Estado de Sincronización
+            const [familyCode, setFamilyCode] = useState(() => localStorage.getItem('hogar_family_code') || '');
+            const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+            const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
+            const [syncStatus, setSyncStatus] = useState('idle'); // 'idle' | 'syncing' | 'connected' | 'error'
+            const [toastMessage, setToastMessage] = useState(null);
+
+            // Modales de Formularios
+            const [isRoutineModalOpen, setIsRoutineModalOpen] = useState(false);
+            const [editingRoutine, setEditingRoutine] = useState(null);
+            const [isManageRoutinesOpen, setIsManageRoutinesOpen] = useState(false);
+
+            const [isBacklogModalOpen, setIsBacklogModalOpen] = useState(false);
+            const [editingBacklog, setEditingBacklog] = useState(null);
+
+            const [isAnnualModalOpen, setIsAnnualModalOpen] = useState(false);
+            const [editingAnnual, setEditingAnnual] = useState(null);
+
+            // Diálogo de confirmación de borrado
+            const [deleteConfirm, setDeleteConfirm] = useState(null); // { type, id, title }
+
+            // Datos Principales
+            const [routines, setRoutines] = useState(() => {
+                const saved = localStorage.getItem('hogar_routines');
+                return saved ? JSON.parse(saved) : INITIAL_ROUTINES;
+            });
+
+            const [completedLogs, setCompletedLogs] = useState(() => {
+                const saved = localStorage.getItem('hogar_completed_logs');
+                return saved ? JSON.parse(saved) : {};
+            });
+
+            const [backlogItems, setBacklogItems] = useState(() => {
+                const saved = localStorage.getItem('hogar_backlog');
+                return saved ? JSON.parse(saved) : INITIAL_BACKLOG;
+            });
+
+            const [annualItems, setAnnualItems] = useState(() => {
+                const saved = localStorage.getItem('hogar_annual');
+                return saved ? JSON.parse(saved) : INITIAL_ANNUAL;
+            });
+
+            const showToast = (msg) => {
+                setToastMessage(msg);
+                setTimeout(() => setToastMessage(null), 3000);
+            };
+
+            // PUSH A LA NUBE CON TIMEOUT Y CORS
+            const pushDataToCloud = useCallback(async (customPayload = null) => {
+                if (!familyCode.trim()) return;
+                setSyncStatus('syncing');
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+                try {
+                    const payload = customPayload || {
+                        routines,
+                        completedLogs,
+                        backlogItems,
+                        annualItems,
+                        lastUpdated: Date.now()
+                    };
+                    const url = getCloudEndpoint(familyCode);
+                    const res = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                        signal: controller.signal
+                    });
+                    clearTimeout(timeoutId);
+                    if (res.ok) {
+                        setSyncStatus('connected');
+                    } else {
+                        setSyncStatus('error');
+                    }
+                } catch (err) {
+                    clearTimeout(timeoutId);
+                    console.warn("Error enviando datos a la nube:", err);
+                    setSyncStatus('error');
+                }
+            }, [familyCode, routines, completedLogs, backlogItems, annualItems]);
+
+            // PULL DESDE LA NUBE MANEJANDO 404 Y TIMEOUT
+            const pullDataFromCloud = useCallback(async () => {
+                if (!familyCode.trim()) {
+                    setSyncStatus('idle');
+                    return;
+                }
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+                try {
+                    const url = getCloudEndpoint(familyCode);
+                    const res = await fetch(url, { signal: controller.signal });
+                    clearTimeout(timeoutId);
+
+                    if (res.status === 404) {
+                        // El código de familia no existe aún en la nube, crearlo con los datos actuales
+                        pushDataToCloud();
+                        setSyncStatus('connected');
+                        return;
+                    }
+
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data && typeof data === 'object') {
+                            if (data.routines) setRoutines(data.routines);
+                            if (data.completedLogs) setCompletedLogs(data.completedLogs);
+                            if (data.backlogItems) setBacklogItems(data.backlogItems);
+                            if (data.annualItems) setAnnualItems(data.annualItems);
+                        }
+                        setSyncStatus('connected');
+                    } else {
+                        setSyncStatus('error');
+                    }
+                } catch (err) {
+                    clearTimeout(timeoutId);
+                    console.warn("Fallo de red al descargar datos:", err);
+                    setSyncStatus('error');
+                }
+            }, [familyCode, pushDataToCloud]);
+
+            // Guardar localmente
+            useEffect(() => { localStorage.setItem('hogar_routines', JSON.stringify(routines)); }, [routines]);
+            useEffect(() => { localStorage.setItem('hogar_completed_logs', JSON.stringify(completedLogs)); }, [completedLogs]);
+            useEffect(() => { localStorage.setItem('hogar_backlog', JSON.stringify(backlogItems)); }, [backlogItems]);
+            useEffect(() => { localStorage.setItem('hogar_annual', JSON.stringify(annualItems)); }, [annualItems]);
+
+            // Consultation loop (Polling cada 4 segundos)
+            useEffect(() => {
+                if (!familyCode.trim()) {
+                    setSyncStatus('idle');
+                    return;
+                }
+                pullDataFromCloud();
+                const interval = setInterval(() => {
+                    pullDataFromCloud();
+                }, 4000);
+                return () => clearInterval(interval);
+            }, [familyCode, pullDataFromCloud]);
+
+            const handleSaveFamilyCode = (code) => {
+                const clean = code.trim().toLowerCase();
+                setFamilyCode(clean);
+                localStorage.setItem('hogar_family_code', clean);
+                if (clean) {
+                    showToast(`Conectando a Código de Familia: ${clean}`);
+                }
+            };
+
+            const exportBackup = () => {
+                const data = { routines, completedLogs, backlogItems, annualItems, exportDate: new Date().toISOString() };
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `HogarSync_Copia_${getTodayStr()}.json`;
+                a.click();
+                showToast("Copia descargada correctamente.");
+            };
+
+            const importBackup = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const imported = JSON.parse(event.target.result);
+                        if (imported.routines) setRoutines(imported.routines);
+                        if (imported.completedLogs) setCompletedLogs(imported.completedLogs);
+                        if (imported.backlogItems) setBacklogItems(imported.backlogItems);
+                        if (imported.annualItems) setAnnualItems(imported.annualItems);
+                        showToast("¡Copia restaurada con éxito!");
+                        setIsBackupModalOpen(false);
+                        if (familyCode.trim()) {
+                            pushDataToCloud({
+                                routines: imported.routines || routines,
+                                completedLogs: imported.completedLogs || completedLogs,
+                                backlogItems: imported.backlogItems || backlogItems,
+                                annualItems: imported.annualItems || annualItems,
+                                lastUpdated: Date.now()
+                            });
+                        }
+                    } catch (err) {
+                        showToast("Error: El archivo no es un JSON válido.");
+                    }
+                };
+                reader.readAsText(file);
+            };
+
+            // Filtros Backlog
+            const [filterRoom, setFilterRoom] = useState('Todas');
+            const [filterPriority, setFilterPriority] = useState('Todas');
+            const [filterStatus, setFilterStatus] = useState('Todas');
+            const [searchQuery, setSearchQuery] = useState('');
+            const [sortBy, setSortBy] = useState('priority_desc');
+
+            // Filtros Trámites
+            const [annualCategory, setAnnualCategory] = useState('Todas');
+            const [annualMonth, setAnnualMonth] = useState('Todos');
+            const [annualStatus, setAnnualStatus] = useState('Todas');
+            const [annualSearch, setAnnualSearch] = useState('');
+            const [annualSort, setAnnualSort] = useState('month_asc');
+
+            // Fechas
+            const currentDateObj = useMemo(() => parseLocalDate(selectedDate), [selectedDate]);
+            const currentDayOfWeekNum = currentDateObj.getDay();
+
+            const currentDayMeta = useMemo(() => {
+                return DAYS_OF_WEEK.find(d => d.dayNum === currentDayOfWeekNum) || DAYS_OF_WEEK[0];
+            }, [currentDayOfWeekNum]);
+
+            const weekDaysList = useMemo(() => {
+                const curr = parseLocalDate(selectedDate);
+                const day = curr.getDay();
+                const diffToMon = curr.getDate() - day + (day === 0 ? -6 : 1);
+                const monday = new Date(curr.setDate(diffToMon));
+
+                return DAYS_OF_WEEK.map((d, index) => {
+                    const tempDate = new Date(monday);
+                    tempDate.setDate(monday.getDate() + index);
+                    const dateStr = formatLocalDate(tempDate);
+                    return {
+                        ...d,
+                        dateStr,
+                        dayNumber: tempDate.getDate(),
+                        isToday: dateStr === getTodayStr(),
+                        isSelected: dateStr === selectedDate
+                    };
+                });
+            }, [selectedDate]);
+
+            const changeDateByDays = (delta) => {
+                const date = parseLocalDate(selectedDate);
+                date.setDate(date.getDate() + delta);
+                setSelectedDate(formatLocalDate(date));
+            };
+
+            const dailyRoutines = useMemo(() => {
+                return routines.filter(r => r.days && r.days.includes(currentDayMeta.id));
+            }, [routines, currentDayMeta]);
+
+            const toggleRoutineCompletion = (routineId) => {
+                const key = `${selectedDate}_${routineId}`;
+                const nextVal = !completedLogs[key];
+                const updatedLogs = { ...completedLogs, [key]: nextVal };
+                setCompletedLogs(updatedLogs);
+                if (familyCode.trim()) {
+                    pushDataToCloud({ routines, completedLogs: updatedLogs, backlogItems, annualItems, lastUpdated: Date.now() });
+                }
+            };
+
+            // CRUD Operaciones
+            const handleSaveRoutine = (routineData) => {
+                let updated;
+                if (editingRoutine) {
+                    updated = routines.map(r => r.id === editingRoutine.id ? { ...r, ...routineData } : r);
+                } else {
+                    updated = [...routines, { ...routineData, id: 'r_' + Date.now() }];
+                }
+                setRoutines(updated);
+                setIsRoutineModalOpen(false);
+                setEditingRoutine(null);
+                if (familyCode.trim()) pushDataToCloud({ routines: updated, completedLogs, backlogItems, annualItems, lastUpdated: Date.now() });
+            };
+
+            const handleSaveBacklog = (backlogData) => {
+                let updated;
+                if (editingBacklog) {
+                    updated = backlogItems.map(b => b.id === editingBacklog.id ? { ...b, ...backlogData } : b);
+                } else {
+                    updated = [{ ...backlogData, id: 'b_' + Date.now(), createdAt: getTodayStr() }, ...backlogItems];
+                }
+                setBacklogItems(updated);
+                setIsBacklogModalOpen(false);
+                setEditingBacklog(null);
+                if (familyCode.trim()) pushDataToCloud({ routines, completedLogs, backlogItems: updated, annualItems, lastUpdated: Date.now() });
+            };
+
+            const updateBacklogStatus = (id, newStatus) => {
+                const updated = backlogItems.map(item => item.id === id ? { ...item, status: newStatus } : item);
+                setBacklogItems(updated);
+                if (familyCode.trim()) pushDataToCloud({ routines, completedLogs, backlogItems: updated, annualItems, lastUpdated: Date.now() });
+            };
+
+            const handleSaveAnnual = (annualData) => {
+                let updated;
+                if (editingAnnual) {
+                    updated = annualItems.map(a => a.id === editingAnnual.id ? { ...a, ...annualData } : a);
+                } else {
+                    updated = [{ ...annualData, id: 'a_' + Date.now(), createdAt: getTodayStr() }, ...annualItems];
+                }
+                setAnnualItems(updated);
+                setIsAnnualModalOpen(false);
+                setEditingAnnual(null);
+                if (familyCode.trim()) pushDataToCloud({ routines, completedLogs, backlogItems, annualItems: updated, lastUpdated: Date.now() });
+            };
+
+            const updateAnnualStatus = (id, newStatus) => {
+                const updated = annualItems.map(item => item.id === id ? { ...item, status: newStatus } : item);
+                setAnnualItems(updated);
+                if (familyCode.trim()) pushDataToCloud({ routines, completedLogs, backlogItems, annualItems: updated, lastUpdated: Date.now() });
+            };
+
+            // BORRADO CON MODAL DE CONFIRMACIÓN
+            const confirmDeleteAction = () => {
+                if (!deleteConfirm) return;
+                const { type, id } = deleteConfirm;
+                let r = routines, b = backlogItems, a = annualItems;
+                if (type === 'routine') {
+                    r = routines.filter(item => item.id !== id);
+                    setRoutines(r);
+                } else if (type === 'backlog') {
+                    b = backlogItems.filter(item => item.id !== id);
+                    setBacklogItems(b);
+                } else if (type === 'annual') {
+                    a = annualItems.filter(item => item.id !== id);
+                    setAnnualItems(a);
+                }
+                setDeleteConfirm(null);
+                showToast("Elemento eliminado.");
+                if (familyCode.trim()) pushDataToCloud({ routines: r, completedLogs, backlogItems: b, annualItems: a, lastUpdated: Date.now() });
+            };
+
+            // Filtrado Backlog
+            const filteredBacklog = useMemo(() => {
+                const priorityWeight = { 'Alta': 3, 'Media': 2, 'Baja': 1 };
+                const statusWeight = { 'Pendiente': 2, 'Completado': 1 };
+
+                return backlogItems.filter(item => {
+                    const matchRoom = filterRoom === 'Todas' || item.room === filterRoom;
+                    const matchPriority = filterPriority === 'Todas' || item.priority === filterPriority;
+                    const matchStatus = filterStatus === 'Todas' || item.status === filterStatus;
+                    const matchSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                                        (item.description && item.description.toLowerCase().includes(searchQuery.toLowerCase()));
+                    return matchRoom && matchPriority && matchStatus && matchSearch;
+                }).sort((a, b) => {
+                    if (sortBy === 'priority_desc') return priorityWeight[b.priority] - priorityWeight[a.priority];
+                    if (sortBy === 'room_asc') return a.room.localeCompare(b.room);
+                    if (sortBy === 'created_desc') return new Date(b.createdAt) - new Date(a.createdAt);
+                    if (sortBy === 'title_asc') return a.title.localeCompare(b.title);
+                    if (sortBy === 'status_pending') return statusWeight[b.status] - statusWeight[a.status];
+                    return 0;
+                });
+            }, [backlogItems, filterRoom, filterPriority, filterStatus, searchQuery, sortBy]);
+
+            // Filtrado Trámites
+            const filteredAnnual = useMemo(() => {
+                return annualItems.filter(item => {
+                    const matchCategory = annualCategory === 'Todas' || item.category === annualCategory;
+                    const matchMonth = annualMonth === 'Todos' || item.month === annualMonth;
+                    const matchStatus = annualStatus === 'Todas' || item.status === annualStatus;
+                    const matchSearch = item.title.toLowerCase().includes(annualSearch.toLowerCase()) ||
+                                        (item.notes && item.notes.toLowerCase().includes(annualSearch.toLowerCase()));
+                    return matchCategory && matchMonth && matchStatus && matchSearch;
+                }).sort((a, b) => {
+                    if (annualSort === 'month_asc') return MONTHS_LIST.indexOf(a.month) - MONTHS_LIST.indexOf(b.month);
+                    if (annualSort === 'cost_desc') return Number(b.cost || 0) - Number(a.cost || 0);
+                    if (annualSort === 'cost_asc') return Number(a.cost || 0) - Number(b.cost || 0);
+                    if (annualSort === 'title_asc') return a.title.localeCompare(b.title);
+                    return 0;
+                });
+            }, [annualItems, annualCategory, annualMonth, annualStatus, annualSearch, annualSort]);
+
+            const annualStats = useMemo(() => {
+                const totalCost = annualItems.reduce((acc, curr) => acc + (Number(curr.cost) || 0), 0);
+                const completedCount = annualItems.filter(i => i.status === 'Completado').length;
+                const pendingCount = annualItems.length - completedCount;
+                return { totalCost, completedCount, pendingCount, totalCount: annualItems.length };
+            }, [annualItems]);
+
+            const completedDailyCount = useMemo(() => {
+                return dailyRoutines.filter(r => !!completedLogs[`${selectedDate}_${r.id}`]).length;
+            }, [dailyRoutines, completedLogs, selectedDate]);
+
+            const dailyProgressPercent = dailyRoutines.length > 0 
+                ? Math.round((completedDailyCount / dailyRoutines.length) * 100) 
+                : 0;
+
+            const isTodaySelected = selectedDate === getTodayStr();
+
+            return (
+                <div className="min-h-full max-w-5xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
+                    {/* NOTIFICACIÓN TOAST */}
+                    {toastMessage && (
+                        <div className="fixed top-4 right-4 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-lg text-xs font-medium flex items-center space-x-2 animate-bounce">
+                            <span>ℹ️</span>
+                            <span>{toastMessage}</span>
+                        </div>
+                    )}
+
+                    {/* CABECERA Y NAVEGACIÓN DE MÓDULOS */}
+                    <header className="bg-white rounded-2xl p-5 mb-6 shadow-sm border border-slate-200/80">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div className="flex items-center justify-between w-full md:w-auto">
+                                <div className="flex items-center space-x-3">
+                                    <div className="w-10 h-10 rounded-xl bg-brand-500 text-white flex items-center justify-center font-bold text-xl shadow-md shadow-brand-500/20">
+                                        🏡
+                                    </div>
+                                    <div>
+                                        <h1 className="text-xl font-bold text-slate-900 tracking-tight">HogarSync</h1>
+                                        <div className="flex items-center space-x-2">
+                                            <p className="text-xs text-slate-500">Gestión del Hogar</p>
+                                            {familyCode ? (
+                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center space-x-1 ${
+                                                    syncStatus === 'connected' ? 'bg-emerald-100 text-emerald-800' :
+                                                    syncStatus === 'syncing' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
+                                                }`}>
+                                                    <span className={`w-1.5 h-1.5 rounded-full ${
+                                                        syncStatus === 'connected' ? 'bg-emerald-500 animate-pulse' :
+                                                        syncStatus === 'syncing' ? 'bg-amber-500' : 'bg-red-500'
+                                                    }`}></span>
+                                                    <span>{
+                                                        syncStatus === 'connected' ? 'Sincronizado' :
+                                                        syncStatus === 'syncing' ? 'Sincronizando...' : 'Error de red'
+                                                    }</span>
+                                                </span>
+                                            ) : (
+                                                <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+                                                    Modo Local
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center space-x-1 md:hidden">
+                                    <button
+                                        onClick={() => setIsSyncModalOpen(true)}
+                                        className="p-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs"
+                                        title="Sincronización"
+                                    >
+                                        ☁️
+                                    </button>
+                                    <button
+                                        onClick={() => setIsBackupModalOpen(true)}
+                                        className="p-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs"
+                                        title="Copia de seguridad"
+                                    >
+                                        💾
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col sm:flex-row items-center gap-2">
+                                <div className="hidden md:flex items-center space-x-1.5">
+                                    <button
+                                        onClick={() => setIsSyncModalOpen(true)}
+                                        className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors flex items-center space-x-1.5"
+                                    >
+                                        <span>☁️</span>
+                                        <span>{familyCode ? `Familia: ${familyCode}` : 'Sincronizar'}</span>
+                                    </button>
+
+                                    <button
+                                        onClick={() => setIsBackupModalOpen(true)}
+                                        className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors flex items-center space-x-1.5"
+                                    >
+                                        <span>💾</span>
+                                        <span>Copia</span>
+                                    </button>
+                                </div>
+
+                                <div className="flex bg-slate-100 p-1 rounded-xl flex-wrap w-full sm:w-auto">
+                                    <button
+                                        onClick={() => setActiveTab('routines')}
+                                        className={`flex-1 sm:flex-none px-3.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                                            activeTab === 'routines'
+                                                ? 'bg-white text-brand-700 shadow-sm'
+                                                : 'text-slate-600 hover:text-slate-900'
+                                        }`}
+                                    >
+                                        📅 Rutinas
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveTab('backlog')}
+                                        className={`flex-1 sm:flex-none px-3.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                                            activeTab === 'backlog'
+                                                ? 'bg-white text-brand-700 shadow-sm'
+                                                : 'text-slate-600 hover:text-slate-900'
+                                        }`}
+                                    >
+                                        🛠️ Mantenimiento
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveTab('annual')}
+                                        className={`flex-1 sm:flex-none px-3.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                                            activeTab === 'annual'
+                                                ? 'bg-white text-brand-700 shadow-sm'
+                                                : 'text-slate-600 hover:text-slate-900'
+                                        }`}
+                                    >
+                                        📝 Trámites
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </header>
+
+                    {/* MÓDULO 1: RUTINAS SEMANALES */}
+                    {activeTab === 'routines' && (
+                        <div className="space-y-6">
+                            <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80 space-y-4">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                                    <div className="flex items-center space-x-2">
+                                        <button 
+                                            onClick={() => changeDateByDays(-1)}
+                                            className="p-2 hover:bg-slate-100 rounded-xl text-slate-600 transition-colors"
+                                            title="Día anterior"
+                                        >
+                                            ◀
+                                        </button>
+                                        
+                                        <div className="flex items-center space-x-2">
+                                            <input 
+                                                type="date"
+                                                value={selectedDate}
+                                                onChange={(e) => e.target.value && setSelectedDate(e.target.value)}
+                                                className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-brand-500"
+                                            />
+                                            {!isTodaySelected && (
+                                                <button
+                                                    onClick={() => setSelectedDate(getTodayStr())}
+                                                    className="px-2.5 py-1.5 bg-brand-50 text-brand-700 hover:bg-brand-100 rounded-xl text-xs font-bold transition-colors"
+                                                >
+                                                    Hoy
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        <button 
+                                            onClick={() => changeDateByDays(1)}
+                                            className="p-2 hover:bg-slate-100 rounded-xl text-slate-600 transition-colors"
+                                            title="Día siguiente"
+                                        >
+                                            ▶
+                                        </button>
+                                    </div>
+
+                                    <div className="flex items-center justify-between sm:justify-end space-x-3">
+                                        {!isTodaySelected && (
+                                            <span className="text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg">
+                                                📜 Histórico ({selectedDate})
+                                            </span>
+                                        )}
+                                        <button
+                                            onClick={() => setIsManageRoutinesOpen(true)}
+                                            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors flex items-center space-x-1"
+                                        >
+                                            <span>⚙️</span>
+                                            <span>Gestionar Rutinas</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-7 gap-1.5">
+                                    {weekDaysList.map(day => (
+                                        <button
+                                            key={day.dateStr}
+                                            onClick={() => setSelectedDate(day.dateStr)}
+                                            className={`flex flex-col items-center py-2 px-1 rounded-xl transition-all ${
+                                                day.isSelected 
+                                                    ? 'bg-brand-500 text-white shadow-md shadow-brand-500/20 font-bold' 
+                                                    : day.isToday 
+                                                        ? 'bg-brand-50 text-brand-700 border border-brand-200 font-semibold' 
+                                                        : 'hover:bg-slate-100 text-slate-600'
+                                            }`}
+                                        >
+                                            <span className="text-[10px] uppercase tracking-wider opacity-80">{day.short}</span>
+                                            <span className="text-sm">{day.dayNumber}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80">
+                                <div className="flex justify-between items-center mb-2 text-xs">
+                                    <span className="font-semibold text-slate-700">Cumplimiento del día</span>
+                                    <span className="font-bold text-brand-700">{completedDailyCount} de {dailyRoutines.length} ({dailyProgressPercent}%)</span>
+                                </div>
+                                <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                                    <div 
+                                        className="h-full bg-brand-500 rounded-full transition-all duration-300"
+                                        style={{ width: `${dailyProgressPercent}%` }}
+                                    ></div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                {['Mañana', 'Tarde', 'Noche'].map(period => {
+                                    const periodRoutines = dailyRoutines.filter(r => r.period === period);
+                                    if (periodRoutines.length === 0) return null;
+
+                                    return (
+                                        <div key={period} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80">
+                                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center space-x-1.5">
+                                                <span>{period === 'Mañana' ? '🌅' : period === 'Tarde' ? '☀️' : '🌙'}</span>
+                                                <span>{period}</span>
+                                            </h3>
+                                            <div className="space-y-2">
+                                                {periodRoutines.map(routine => {
+                                                    const key = `${selectedDate}_${routine.id}`;
+                                                    const isChecked = !!completedLogs[key];
+
+                                                    return (
+                                                        <div 
+                                                            key={routine.id}
+                                                            onClick={() => toggleRoutineCompletion(routine.id)}
+                                                            className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
+                                                                isChecked 
+                                                                    ? 'bg-emerald-50/60 border-emerald-200 text-slate-500' 
+                                                                    : 'bg-white border-slate-200 text-slate-800 hover:border-brand-300'
+                                                            }`}
+                                                        >
+                                                            <div className="flex items-center space-x-3">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={isChecked}
+                                                                    onChange={() => {}}
+                                                                    className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500 border-slate-300"
+                                                                />
+                                                                <div>
+                                                                    <p className={`text-sm font-medium ${isChecked ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+                                                                        {routine.title}
+                                                                    </p>
+                                                                    <span className="inline-block text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md mt-0.5">
+                                                                        📍 {routine.room}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+
+                                {dailyRoutines.length === 0 && (
+                                    <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-200">
+                                        <p className="text-sm text-slate-500">No hay rutinas programadas para este día.</p>
+                                        <button 
+                                            onClick={() => setIsManageRoutinesOpen(true)}
+                                            className="mt-2 text-xs text-brand-600 font-bold hover:underline"
+                                        >
+                                            + Configurar rutinas
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* MÓDULO 2: MANTENIMIENTO DEL HOGAR */}
+                    {activeTab === 'backlog' && (
+                        <div className="space-y-5">
+                            <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80 space-y-3">
+                                <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
+                                    <input
+                                        type="text"
+                                        placeholder="🔍 Buscar tarea de mantenimiento..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="w-full sm:w-72 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-brand-500"
+                                    />
+                                    <button
+                                        onClick={() => { setEditingBacklog(null); setIsBacklogModalOpen(true); }}
+                                        className="w-full sm:w-auto px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-xl text-xs shadow-md shadow-brand-500/20 transition-all"
+                                    >
+                                        + Nueva Tarea de Mantenimiento
+                                    </button>
+                                </div>
+
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-100">
+                                    <div>
+                                        <label className="block text-[10px] font-semibold text-slate-500 mb-1">Estancia (11)</label>
+                                        <select
+                                            value={filterRoom}
+                                            onChange={(e) => setFilterRoom(e.target.value)}
+                                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                                        >
+                                            <option value="Todas">Todas las estancias</option>
+                                            {ROOMS.map(r => <option key={r} value={r}>{r}</option>)}
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[10px] font-semibold text-slate-500 mb-1">Prioridad</label>
+                                        <select
+                                            value={filterPriority}
+                                            onChange={(e) => setFilterPriority(e.target.value)}
+                                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                                        >
+                                            <option value="Todas">Todas las prioridades</option>
+                                            <option value="Alta">Alta</option>
+                                            <option value="Media">Media</option>
+                                            <option value="Baja">Baja</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[10px] font-semibold text-slate-500 mb-1">Estado</label>
+                                        <select
+                                            value={filterStatus}
+                                            onChange={(e) => setFilterStatus(e.target.value)}
+                                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                                        >
+                                            <option value="Todas">Todos los estados</option>
+                                            <option value="Pendiente">Pendiente</option>
+                                            <option value="Completado">Completado</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[10px] font-semibold text-slate-500 mb-1">Ordenar por</label>
+                                        <select
+                                            value={sortBy}
+                                            onChange={(e) => setSortBy(e.target.value)}
+                                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium"
+                                        >
+                                            <option value="priority_desc">🚨 Prioridad (Alta primero)</option>
+                                            <option value="room_asc">🏠 Estancia (A-Z)</option>
+                                            <option value="created_desc">📅 Más recientes</option>
+                                            <option value="title_asc">🔤 Título (A-Z)</option>
+                                            <option value="status_pending">📌 Pendientes primero</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {filteredBacklog.map(item => (
+                                    <div key={item.id} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80 flex flex-col justify-between space-y-3">
+                                        <div>
+                                            <div className="flex items-start justify-between gap-2 mb-2">
+                                                <h4 className={`text-sm font-bold ${item.status === 'Completado' ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+                                                    {item.title}
+                                                </h4>
+                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                                                    item.priority === 'Alta' ? 'bg-red-100 text-red-700' :
+                                                    item.priority === 'Media' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-700'
+                                                }`}>
+                                                    {item.priority}
+                                                </span>
+                                            </div>
+                                            {item.description && (
+                                                <p className="text-xs text-slate-500 mb-3">{item.description}</p>
+                                            )}
+                                            <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                                                <span className="bg-slate-100 px-2 py-0.5 rounded-md">📍 {item.room}</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                                            <select
+                                                value={item.status}
+                                                onChange={(e) => updateBacklogStatus(item.id, e.target.value)}
+                                                className={`text-xs font-semibold px-2.5 py-1 rounded-lg border focus:outline-none ${
+                                                    item.status === 'Completado' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-50 text-slate-700 border-slate-200'
+                                                }`}
+                                            >
+                                                <option value="Pendiente">Pendiente</option>
+                                                <option value="Completado">Completado</option>
+                                            </select>
+
+                                            <div className="flex items-center space-x-1">
+                                                <button
+                                                    onClick={() => { setEditingBacklog(item); setIsBacklogModalOpen(true); }}
+                                                    className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg text-xs"
+                                                    title="Editar tarea"
+                                                >
+                                                    ✏️
+                                                </button>
+                                                <button
+                                                    onClick={() => setDeleteConfirm({ type: 'backlog', id: item.id, title: item.title })}
+                                                    className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg text-xs"
+                                                    title="Eliminar tarea"
+                                                >
+                                                    🗑️
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+
+                                {filteredBacklog.length === 0 && (
+                                    <div className="col-span-full text-center py-12 bg-white rounded-2xl border border-dashed border-slate-200">
+                                        <p className="text-sm text-slate-500">No hay tareas de mantenimiento guardadas.</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* MÓDULO 3: TRÁMITES ANUALES */}
+                    {activeTab === 'annual' && (
+                        <div className="space-y-5">
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Est. (€)</span>
+                                    <p className="text-lg font-bold text-slate-900 mt-1">{annualStats.totalCost} €</p>
+                                </div>
+                                <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Trámites Totales</span>
+                                    <p className="text-lg font-bold text-slate-900 mt-1">{annualStats.totalCount}</p>
+                                </div>
+                                <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80">
+                                    <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Completados</span>
+                                    <p className="text-lg font-bold text-emerald-700 mt-1">{annualStats.completedCount}</p>
+                                </div>
+                                <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80">
+                                    <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Pendientes</span>
+                                    <p className="text-lg font-bold text-amber-700 mt-1">{annualStats.pendingCount}</p>
+                                </div>
+                            </div>
+
+                            <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80 space-y-3">
+                                <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
+                                    <input
+                                        type="text"
+                                        placeholder="🔍 Buscar trámite anual..."
+                                        value={annualSearch}
+                                        onChange={(e) => setAnnualSearch(e.target.value)}
+                                        className="w-full sm:w-72 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-brand-500"
+                                    />
+                                    <button
+                                        onClick={() => { setEditingAnnual(null); setIsAnnualModalOpen(true); }}
+                                        className="w-full sm:w-auto px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-xl text-xs shadow-md shadow-brand-500/20 transition-all"
+                                    >
+                                        + Nuevo Trámite Anual
+                                    </button>
+                                </div>
+
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-100">
+                                    <div>
+                                        <label className="block text-[10px] font-semibold text-slate-500 mb-1">Categoría</label>
+                                        <select
+                                            value={annualCategory}
+                                            onChange={(e) => setAnnualCategory(e.target.value)}
+                                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                                        >
+                                            <option value="Todas">Todas las categorías</option>
+                                            {ANNUAL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[10px] font-semibold text-slate-500 mb-1">Mes</label>
+                                        <select
+                                            value={annualMonth}
+                                            onChange={(e) => setAnnualMonth(e.target.value)}
+                                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                                        >
+                                            <option value="Todos">Todos los meses</option>
+                                            {MONTHS_LIST.map(m => <option key={m} value={m}>{m}</option>)}
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[10px] font-semibold text-slate-500 mb-1">Estado</label>
+                                        <select
+                                            value={annualStatus}
+                                            onChange={(e) => setAnnualStatus(e.target.value)}
+                                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                                        >
+                                            <option value="Todas">Todos los estados</option>
+                                            <option value="Pendiente">Pendiente</option>
+                                            <option value="Completado">Completado</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[10px] font-semibold text-slate-500 mb-1">Ordenar por</label>
+                                        <select
+                                            value={annualSort}
+                                            onChange={(e) => setAnnualSort(e.target.value)}
+                                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium"
+                                        >
+                                            <option value="month_asc">📅 Mes del año</option>
+                                            <option value="cost_desc">💰 Importe (Mayor a menor)</option>
+                                            <option value="cost_asc">💰 Importe (Menor a mayor)</option>
+                                            <option value="title_asc">🔤 Título (A-Z)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {filteredAnnual.map(item => (
+                                    <div key={item.id} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80 flex flex-col justify-between space-y-3">
+                                        <div>
+                                            <div className="flex items-start justify-between gap-2 mb-1">
+                                                <h4 className={`text-sm font-bold ${item.status === 'Completado' ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+                                                    {item.title}
+                                                </h4>
+                                                <span className="text-xs font-bold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-lg shrink-0">
+                                                    {item.cost ? `${item.cost} €` : '0 €'}
+                                                </span>
+                                            </div>
+                                            {item.notes && (
+                                                <p className="text-xs text-slate-500 mb-3">{item.notes}</p>
+                                            )}
+                                            <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
+                                                <span className="bg-brand-50 text-brand-700 font-bold px-2 py-0.5 rounded-md">🗓️ {item.month}</span>
+                                                <span className="bg-slate-100 px-2 py-0.5 rounded-md">🏷️ {item.category}</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                                            <select
+                                                value={item.status}
+                                                onChange={(e) => updateAnnualStatus(item.id, e.target.value)}
+                                                className={`text-xs font-semibold px-2.5 py-1 rounded-lg border focus:outline-none ${
+                                                    item.status === 'Completado' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-50 text-slate-700 border-slate-200'
+                                                }`}
+                                            >
+                                                <option value="Pendiente">Pendiente</option>
+                                                <option value="Completado">Completado</option>
+                                            </select>
+
+                                            <div className="flex items-center space-x-1">
+                                                <button
+                                                    onClick={() => { setEditingAnnual(item); setIsAnnualModalOpen(true); }}
+                                                    className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg text-xs"
+                                                    title="Editar trámite"
+                                                >
+                                                    ✏️
+                                                </button>
+                                                <button
+                                                    onClick={() => setDeleteConfirm({ type: 'annual', id: item.id, title: item.title })}
+                                                    className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg text-xs"
+                                                    title="Eliminar trámite"
+                                                >
+                                                    🗑️
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+
+                                {filteredAnnual.length === 0 && (
+                                    <div className="col-span-full text-center py-12 bg-white rounded-2xl border border-dashed border-slate-200">
+                                        <p className="text-sm text-slate-500">No hay trámites anuales guardados.</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* MODAL CONFIRMACIÓN DE BORRADO */}
+                    {deleteConfirm && (
+                        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                            <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-xl border border-slate-200 space-y-4">
+                                <div className="text-center space-y-2">
+                                    <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-xl mx-auto">
+                                        🗑️
+                                    </div>
+                                    <h3 className="text-base font-bold text-slate-900">¿Eliminar elemento?</h3>
+                                    <p className="text-xs text-slate-500">
+                                        ¿Estás seguro de que deseas borrar <b>"{deleteConfirm.title}"</b>? Esta acción no se puede deshacer.
+                                    </p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 pt-2">
+                                    <button
+                                        onClick={() => setDeleteConfirm(null)}
+                                        className="py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        onClick={confirmDeleteAction}
+                                        className="py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-red-600/20"
+                                    >
+                                        Sí, eliminar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* MODAL GESTIONAR RUTINAS */}
+                    {isManageRoutinesOpen && (
+                        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                            <div className="bg-white rounded-2xl max-w-lg w-full p-5 shadow-xl border border-slate-200 space-y-4 max-h-[90vh] flex flex-col">
+                                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                    <h3 className="text-sm font-bold text-slate-800">Gestionar Rutinas del Hogar</h3>
+                                    <button onClick={() => setIsManageRoutinesOpen(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+                                </div>
+
+                                <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                                    {routines.map(r => (
+                                        <div key={r.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
+                                            <div>
+                                                <p className="text-xs font-bold text-slate-800">{r.title}</p>
+                                                <p className="text-[10px] text-slate-500">
+                                                    📍 {r.room} • {r.period} • {r.days.map(d => DAYS_OF_WEEK.find(x => x.id === d)?.short).join(', ')}
+                                                </p>
+                                            </div>
+                                            <div className="flex items-center space-x-1">
+                                                <button 
+                                                    onClick={() => { setEditingRoutine(r); setIsRoutineModalOpen(true); }}
+                                                    className="p-1.5 text-slate-400 hover:text-slate-600 text-xs"
+                                                    title="Editar"
+                                                >
+                                                    ✏️
+                                                </button>
+                                                <button 
+                                                    onClick={() => setDeleteConfirm({ type: 'routine', id: r.id, title: r.title })}
+                                                    className="p-1.5 text-red-400 hover:text-red-600 text-xs"
+                                                    title="Eliminar"
+                                                >
+                                                    🗑️
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className="pt-2 border-t border-slate-100 flex justify-between">
+                                    <button
+                                        onClick={() => { setEditingRoutine(null); setIsRoutineModalOpen(true); }}
+                                        className="px-4 py-2 bg-brand-500 text-white rounded-xl text-xs font-semibold"
+                                    >
+                                        + Nueva Rutina
+                                    </button>
+                                    <button
+                                        onClick={() => setIsManageRoutinesOpen(false)}
+                                        className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold"
+                                    >
+                                        Cerrar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* MODAL FORMULARIO RUTINA */}
+                    {isRoutineModalOpen && (
+                        <RoutineFormModal
+                            routine={editingRoutine}
+                            onSave={handleSaveRoutine}
+                            onClose={() => { setIsRoutineModalOpen(false); setEditingRoutine(null); }}
+                        />
+                    )}
+
+                    {/* MODAL FORMULARIO BACKLOG */}
+                    {isBacklogModalOpen && (
+                        <BacklogFormModal
+                            item={editingBacklog}
+                            onSave={handleSaveBacklog}
+                            onClose={() => { setIsBacklogModalOpen(false); setEditingBacklog(null); }}
+                        />
+                    )}
+
+                    {/* MODAL FORMULARIO TRÁMITE */}
+                    {isAnnualModalOpen && (
+                        <AnnualFormModal
+                            item={editingAnnual}
+                            onSave={handleSaveAnnual}
+                            onClose={() => { setIsAnnualModalOpen(false); setEditingAnnual(null); }}
+                        />
+                    )}
+
+                    {/* MODAL SINCRONIZACIÓN */}
+                    {isSyncModalOpen && (
+                        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                            <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-xl border border-slate-200 space-y-4">
+                                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                    <h3 className="text-sm font-bold text-slate-800">Sincronización en Tiempo Real</h3>
+                                    <button onClick={() => setIsSyncModalOpen(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+                                </div>
+                                <p className="text-xs text-slate-500">
+                                    Introduce un <b>Código de Familia</b> único en ambos móviles (ej. <i>familia-zambrano</i>) para ver los cambios en tiempo real.
+                                </p>
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-700 mb-1">Código de Familia</label>
+                                    <input
+                                        type="text"
+                                        value={familyCode}
+                                        onChange={(e) => handleSaveFamilyCode(e.target.value)}
+                                        placeholder="Ej. casa-zambrano"
+                                        className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-brand-500 font-mono font-bold text-slate-800"
+                                    />
+                                </div>
+
+                                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+                                    <span className="text-slate-600 font-medium">Estado conexión:</span>
+                                    <span className={`font-bold px-2 py-0.5 rounded-full text-[10px] ${
+                                        syncStatus === 'connected' ? 'bg-emerald-100 text-emerald-800' :
+                                        syncStatus === 'syncing' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
+                                    }`}>
+                                        {syncStatus === 'connected' ? '🟢 Conectado' : syncStatus === 'syncing' ? '🟡 Sincronizando' : '🔴 Modo Local / Error'}
+                                    </span>
+                                </div>
+
+                                <div className="pt-2 flex space-x-2">
+                                    <button
+                                        onClick={() => { pushDataToCloud(); setIsSyncModalOpen(false); }}
+                                        className="w-full py-2 bg-brand-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-brand-500/20 hover:bg-brand-600"
+                                    >
+                                        Conectar y Sincronizar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* MODAL COPIA DE SEGURIDAD */}
+                    {isBackupModalOpen && (
+                        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                            <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-xl border border-slate-200 space-y-4">
+                                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                    <h3 className="text-sm font-bold text-slate-800">Copia de Seguridad e Histórico</h3>
+                                    <button onClick={() => setIsBackupModalOpen(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+                                </div>
+                                <div className="space-y-3">
+                                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                                        <h4 className="text-xs font-bold text-slate-800 mb-1">📤 Descargar Copia</h4>
+                                        <p className="text-[11px] text-slate-500 mb-2">Guarda un respaldo con todas las rutinas y trámites.</p>
+                                        <button
+                                            onClick={exportBackup}
+                                            className="w-full py-1.5 bg-slate-800 text-white rounded-lg text-xs font-semibold hover:bg-slate-900 transition-colors"
+                                        >
+                                            Guardar copia (.json)
+                                        </button>
+                                    </div>
+                                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                                        <h4 className="text-xs font-bold text-slate-800 mb-1">📥 Restaurar Copia</h4>
+                                        <p className="text-[11px] text-slate-500 mb-2">Carga un archivo previamente guardado.</p>
+                                        <label className="block w-full text-center py-1.5 bg-brand-500 text-white rounded-lg text-xs font-semibold hover:bg-brand-600 cursor-pointer transition-colors">
+                                            <span>Seleccionar archivo (.json)</span>
+                                            <input type="file" accept=".json" onChange={importBackup} className="hidden" />
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // FORMULARIO RUTINA
+        function RoutineFormModal({ routine, onSave, onClose }) {
+            const [title, setTitle] = useState(routine ? routine.title : '');
+            const [room, setRoom] = useState(routine ? routine.room : ROOMS[0]);
+            const [period, setPeriod] = useState(routine ? routine.period : 'Mañana');
+            const [days, setDays] = useState(routine ? routine.days : ['lun', 'mie', 'vie']);
+
+            const toggleDay = (dayId) => {
+                setDays(prev => prev.includes(dayId) ? prev.filter(d => d !== dayId) : [...prev, dayId]);
+            };
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                if (!title.trim() || days.length === 0) return;
+                onSave({ title, room, period, days });
+            };
+
+            return (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <form onSubmit={handleSubmit} className="bg-white rounded-2xl max-w-md w-full p-5 shadow-xl border border-slate-200 space-y-4">
+                        <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                            <h3 className="text-sm font-bold text-slate-800">{routine ? 'Editar Rutina' : 'Nueva Rutina'}</h3>
+                            <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-700 mb-1">Título de la rutina</label>
+                            <input
+                                type="text"
+                                required
+                                value={title}
+                                onChange={(e) => setTitle(e.target.value)}
+                                placeholder="Ej. Limpiar polvo de estanterías"
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-brand-500"
+                            />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">Estancia (11)</label>
+                                <select value={room} onChange={(e) => setRoom(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                                    {ROOMS.map(r => <option key={r} value={r}>{r}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">Momento del día</label>
+                                <select value={period} onChange={(e) => setPeriod(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                                    <option value="Mañana">Mañana</option>
+                                    <option value="Tarde">Tarde</option>
+                                    <option value="Noche">Noche</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-700 mb-1">Días de ejecución</label>
+                            <div className="flex flex-wrap gap-1.5">
+                                {DAYS_OF_WEEK.map(d => (
+                                    <button
+                                        type="button"
+                                        key={d.id}
+                                        onClick={() => toggleDay(d.id)}
+                                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                                            days.includes(d.id) ? 'bg-brand-500 text-white shadow-sm' : 'bg-slate-100 text-slate-600'
+                                        }`}
+                                    >
+                                        {d.short}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="pt-2 flex justify-end space-x-2">
+                            <button type="button" onClick={onClose} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-brand-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-brand-500/20">Guardar</button>
+                        </div>
+                    </form>
+                </div>
+            );
+        }
+
+        // FORMULARIO BACKLOG
+        function BacklogFormModal({ item, onSave, onClose }) {
+            const [title, setTitle] = useState(item ? item.title : '');
+            const [room, setRoom] = useState(item ? item.room : ROOMS[0]);
+            const [priority, setPriority] = useState(item ? item.priority : 'Media');
+            const [status, setStatus] = useState(item ? item.status : 'Pendiente');
+            const [description, setDescription] = useState(item ? item.description : '');
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                if (!title.trim()) return;
+                onSave({ title, room, priority, status, description });
+            };
+
+            return (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <form onSubmit={handleSubmit} className="bg-white rounded-2xl max-w-md w-full p-5 shadow-xl border border-slate-200 space-y-4">
+                        <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                            <h3 className="text-sm font-bold text-slate-800">{item ? 'Editar Tarea' : 'Nueva Tarea'}</h3>
+                            <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-700 mb-1">Título de la tarea</label>
+                            <input
+                                type="text"
+                                required
+                                value={title}
+                                onChange={(e) => setTitle(e.target.value)}
+                                placeholder="Ej. Cambiar bombilla del pasillo"
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-brand-500"
+                            />
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">Estancia (11)</label>
+                                <select value={room} onChange={(e) => setRoom(e.target.value)} className="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                                    {ROOMS.map(r => <option key={r} value={r}>{r}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">Prioridad</label>
+                                <select value={priority} onChange={(e) => setPriority(e.target.value)} className="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                                    <option value="Alta">Alta</option>
+                                    <option value="Media">Media</option>
+                                    <option value="Baja">Baja</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">Estado</label>
+                                <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                                    <option value="Pendiente">Pendiente</option>
+                                    <option value="Completado">Completado</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-700 mb-1">Descripción o Notas</label>
+                            <textarea
+                                rows="3"
+                                value={description}
+                                onChange={(e) => setDescription(e.target.value)}
+                                placeholder="Herramientas necesarias, detalles..."
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-brand-500"
+                            ></textarea>
+                        </div>
+                        <div className="pt-2 flex justify-end space-x-2">
+                            <button type="button" onClick={onClose} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-brand-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-brand-500/20">Guardar</button>
+                        </div>
+                    </form>
+                </div>
+            );
+        }
+
+        // FORMULARIO TRÁMITE ANUAL
+        function AnnualFormModal({ item, onSave, onClose }) {
+            const [title, setTitle] = useState(item ? item.title : '');
+            const [category, setCategory] = useState(item ? item.category : ANNUAL_CATEGORIES[0]);
+            const [month, setMonth] = useState(item ? item.month : 'Enero');
+            const [cost, setCost] = useState(item ? item.cost : 0);
+            const [status, setStatus] = useState(item ? item.status : 'Pendiente');
+            const [notes, setNotes] = useState(item ? item.notes : '');
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                if (!title.trim()) return;
+                onSave({ title, category, month, cost: Number(cost) || 0, status, notes });
+            };
+
+            return (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <form onSubmit={handleSubmit} className="bg-white rounded-2xl max-w-md w-full p-5 shadow-xl border border-slate-200 space-y-4">
+                        <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                            <h3 className="text-sm font-bold text-slate-800">{item ? 'Editar Trámite' : 'Nuevo Trámite Anual'}</h3>
+                            <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-700 mb-1">Nombre del trámite o impuesto</label>
+                            <input
+                                type="text"
+                                required
+                                value={title}
+                                onChange={(e) => setTitle(e.target.value)}
+                                placeholder="Ej. Seguro del Coche"
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-brand-500"
+                            />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">Categoría</label>
+                                <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                                    {ANNUAL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">Mes de pago</label>
+                                <select value={month} onChange={(e) => setMonth(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                                    {MONTHS_LIST.map(m => <option key={m} value={m}>{m}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">Coste estimado (€)</label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    value={cost}
+                                    onChange={(e) => setCost(e.target.value)}
+                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-brand-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">Estado</label>
+                                <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                                    <option value="Pendiente">Pendiente</option>
+                                    <option value="Completado">Completado</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-700 mb-1">Notas adicionales</label>
+                            <textarea
+                                rows="3"
+                                value={notes}
+                                onChange={(e) => setNotes(e.target.value)}
+                                placeholder="Detalles, enlaces, datos de cuenta..."
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-brand-500"
+                            ></textarea>
+                        </div>
+                        <div className="pt-2 flex justify-end space-x-2">
+                            <button type="button" onClick={onClose} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-brand-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-brand-500/20">Guardar</button>
+                        </div>
+                    </form>
+                </div>
+            );
+        }
+
+        // Renderizado
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
